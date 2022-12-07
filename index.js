@@ -25,7 +25,7 @@ let googlePayClient;
 
 function onGooglePayLoaded(){
     googlePayClient = new google.payments.api.PaymentsClient({
-        environment:"TEST",
+        environment:"PRODUCTION",
     })
 
     googlePayClient.isReadyToPay(googlePayConfiguration)

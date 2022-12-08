@@ -1,77 +1,127 @@
-const tokenizationSpecification =  {
-    type: 'PAYMENT_GATEWAY',
-        parameters: {
-            gateway: 'example',
-            gatewayMerchantId: 'exampleGatewayMerchantId',
-        },
+const allowedCardNetworks = ["AMEX", "DISCOVER", "INTERAC", "JCB", "MASTERCARD", "VISA"];
+const allowedCardAuthMethods = ["PAN_ONLY", "CRYPTOGRAM_3DS"];
+if (window.PaymentRequest) {
+  const request = createPaymentRequest();
+
+  request.canMakePayment()
+      .then(function(result) {
+        if (result) {
+          // Display PaymentRequest dialog on interaction with the existing checkout button
+          document.getElementById('buyButton')
+              .addEventListener('click', onBuyClicked);
+        }
+      })
+      .catch(function(err) {
+        showErrorForDebugging(
+            'canMakePayment() error! ' + err.name + ' error: ' + err.message);
+      });
+} else {
+  showErrorForDebugging('PaymentRequest API not available.');
 }
 
-const cardPaymentMethod = {
-    type:'CARD',
-    tokenizationSpecification: tokenizationSpecification,
-    parameters:{
-        allowedCardNetworks: ['VISA','MASTERCARD'],
-        allowedAuthMethods: ['PAN_ONLY','CRYPTOGRAM_3DS']
-    }
+/**
+ * Show a PaymentRequest dialog after a user clicks the checkout button
+ */
+function onBuyClicked() {
+  createPaymentRequest()
+      .show()
+      .then(function(response) {
+        // Dismiss payment dialog.
+        response.complete('success');
+        handlePaymentResponse(response);
+      })
+      .catch(function(err) {
+        showErrorForDebugging(
+            'show() error! ' + err.name + ' error: ' + err.message);
+      });
 }
 
-const googlePayConfiguration = {
+/**
+ * Define your unique Google Pay API configuration
+ *
+ * @returns {object} data attribute suitable for PaymentMethodData
+ */
+function getGooglePaymentsConfiguration() {
+  return {
+    environment: 'PRODUCTION',
     apiVersion: 2,
     apiVersionMinor: 0,
-    allowedPaymentMethods:[cardPaymentMethod],
-};
-
-let googlePayClient;
-
-function onGooglePayLoaded(){
-    googlePayClient = new google.payments.api.PaymentsClient({
-        environment:"PRODUCTION",
-    })
-
-    googlePayClient.isReadyToPay(googlePayConfiguration)
-        .then(response=>{
-            if(response.result){
-                createAndAddButton();
-            }else{
-
-            }
-        })
-        .catch(error=>console.error('ISREADYTOPAY',error))
+    merchantInfo: {
+      merchantId:'BCR2DN4T4SYZB7C3',
+      merchantName: 'STRAX_SHOP'
+    },
+    allowedPaymentMethods: [{
+      type: 'CARD',
+      parameters: {
+        allowedAuthMethods: allowedCardAuthMethods,
+        allowedCardNetworks: allowedCardNetworks
+      },
+      tokenizationSpecification: {
+        type: 'PAYMENT_GATEWAY',
+        parameters: {
+          'gateway': 'example',
+          'gatewayMerchantId': 'exampleGatewayMerchantId'
+        }
+      }
+    }]
+  };
 }
 
-function createAndAddButton(){
-    const googlePayButton = googlePayClient.createButton({
-        onClick: onGooglePayButtonClicked,
-    });
-    document.getElementById('buy-now').appendChild(googlePayButton)
-}
-
-function onGooglePayButtonClicked(){
-    const paymentDataRequest = {...googlePayConfiguration}
-    paymentDataRequest.merchantInfo = {
-        merchantId: "BCR2DN4T4SYZB7C3",
-        merchantName: "STRAX_SHOP"
+/**
+ * Create a PaymentRequest
+ *
+ * @returns {PaymentRequest}
+ */
+function createPaymentRequest() {
+  // Add support for the Google Pay API.
+  const methodData = [{
+    supportedMethods: 'https://google.com/pay',
+    data: getGooglePaymentsConfiguration()
+  }];
+  // Add other supported payment methods.
+  methodData.push({
+    supportedMethods: 'basic-card',
+    data: {
+      supportedNetworks:
+          Array.from(allowedCardNetworks, (network) => network.toLowerCase())
     }
+  });
 
-    paymentDataRequest.transactioninfo = {
-        totalPriceStatus: 'FINAL',
-        totalPriceLabel: 'Total',
-        totalPrice: '100.00',
-        currencyCode: 'USD',
-        countryCode: 'US',
-    }
+  const details = {
+    total: {label: 'Test Purchase', amount: {currency: 'USD', value: '1.00'}}
+  };
 
-    googlePayClient.loadPaymentData(paymentDataRequest)
-        .then(paymentData=> processPaymentData(paymentData))
-        .catch(error=>console.error("LOAD PAYMENT DATA ", error))
+  const options = {
+    requestPayerEmail: true,
+    requestPayerName: true
+  };
+
+  return new PaymentRequest(methodData, details, options);
 }
 
-function processPaymentData(paymentData){
-    fetch(ordersEndpointUrl,{
-        method: 'POST',
-        headers:{
-            'Content-Type':'application/json'
-        },
-        body:paymentData
-    })
+/**
+ * Process a PaymentResponse
+ *
+ * @param {PaymentResponse} response returned when a user approves the payment request
+ */
+function handlePaymentResponse(response) {
+  const formattedResponse = document.createElement('pre');
+  formattedResponse.appendChild(
+      document.createTextNode(JSON.stringify(response.toJSON(), null, 2)));
+  document.getElementById('checkout')
+      .insertAdjacentElement('afterend', formattedResponse);
+}
+
+/**
+ * Display an error message for debugging
+ *
+ * @param {string} text message to display
+ */
+function showErrorForDebugging(text) {
+  const errorDisplay = document.createElement('code');
+  errorDisplay.style.color = 'red';
+  errorDisplay.appendChild(document.createTextNode(text));
+  const p = document.createElement('p');
+  p.appendChild(errorDisplay);
+  document.getElementById('checkout').insertAdjacentElement('afterend', p);
 }
